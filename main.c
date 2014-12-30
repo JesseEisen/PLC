@@ -28,7 +28,7 @@ float T1_trans(int id)
 	float ret;
 
 	sensor_get(ss,id,&data);
-	ret = (float)data * 1000/120;
+	ret = (float)data * 120/1000;
 
 	return ret;
 
