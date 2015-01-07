@@ -2,7 +2,7 @@
 #define _COMMON_H_
 
 
-struct socketaddr_in clientaddr;
+struct sockaddr_in clientaddr;
 
 
 #endif
