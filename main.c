@@ -3,10 +3,13 @@
 #include "fx-serial.h"
 #include <string.h>
 #include <pthread.h>
+#include "common.h"
 
 struct fx_serial *ss;
 time_t the_time;
 FILE   *fp;
+int		fd;
+
 //room controller id 
 int Ctrl_TrainRoom1[] = {56,57,58,59,60,61,62,63,80};
 int Ctrl_TrainRoom2[] = {64,65,66,67,68,69,70,71,81};
@@ -131,6 +134,21 @@ void Write_into_file(float room[],int len)
 }
 
 
+void makeupdata(int id,int len)
+{
+	
+	switch(id)
+	{
+		case 1:
+			split_array(len); //use to split array and use different proto to send
+			break;
+		case 2:
+					
+			
+	}
+}
+
+
 
 void Get_data(void)
 {
@@ -142,7 +160,7 @@ void Get_data(void)
 	{
 		fprintf(stderr,"Open file error\n");
 		exit(1);
-	}
+ 	}
 	
 	fputs(ctime(&the_time),fp);
 
@@ -150,11 +168,13 @@ void Get_data(void)
 	len = sizeof(Sensor_TrainRoom1)/sizeof(Sensor_TrainRoom1[0]);
 	Calc_data(Sensor_TrainRoom1,len);
 	Write_into_file(room_info,len);
+	makeup_data(1,len);	
 	
 	fputs("Room2:\n",fp);
 	len = sizeof(Sensor_TrainRoom2)/sizeof(Sensor_TrainRoom2[0]);
 	Calc_data(Sensor_TrainRoom2,len);
 	Write_into_file(room_info,len);
+	makeup_data(2,len);
 
 	fputs("Room3:\n",fp);
 	len = sizeof(Sensor_TrainRoom3)/sizeof(Sensor_TrainRoom3[0]);
@@ -185,7 +205,12 @@ void *Sensor_data(void *arg)
 
 void *Control_controller(void *arg)
 {
-	//do nothing
+//	while(1)
+//	{
+//		printf("waiting for control\n");
+//		sleep(3);
+//	}
+
 }
 
 int main(int argc, const char *argv[])
@@ -195,6 +220,7 @@ int main(int argc, const char *argv[])
 	pthread_t show_data,wait_controller;
 	int err;
 	ss = fx_serial_start();
+	fd = client_init();
 
 	err = pthread_create(&show_data,NULL,Sensor_data,NULL);
 	if(err != 0)
@@ -211,7 +237,7 @@ int main(int argc, const char *argv[])
 	}
 
 	pthread_join(show_data, NULL);
-	pthread_join(show_data, NULL);
+	pthread_join(wait_controller, NULL);
 
 
 	while(1) getchar();

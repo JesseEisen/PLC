@@ -1,0 +1,16 @@
+message MessageHeader
+{
+	required int32 Message_ID = 1;
+	optional int32 session = 2;
+	optional TYPE  Message_type=3;
+	
+	enum TYPE
+	{
+		REQUEST = 1;
+		RESPONES = 2;
+		TEXT =3;
+	}
+
+	optional int32 Version=4;
+	optional int32 Room_tag = 5;
+}
