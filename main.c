@@ -3,12 +3,16 @@
 #include "fx-serial.h"
 #include <string.h>
 #include <pthread.h>
+#include <sys/types.h>
 #include "common.h"
 #include "message_header.pb-c.h"
 #include "getdata.pb-c.h"
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #define BUFSIZE  1024
-
+#define MAXSLEEP 128
 struct fx_serial *ss;
 time_t the_time;
 FILE   *fp;
@@ -29,15 +33,19 @@ int Sensor_light_Room1[] = {19,20,21,22};
 
 float room_info[10]; //save the room info
 
-struct Message_Header mh;
-struct SensorInfo   si;
-struct SensorT		st;
+MessageHeader mh;
+SensorInfo   si;
+SensorT		st;
 
 void *buf_si;
 void *buf_mh;
 void *buf_st;
 
 char buf[BUFSIZE];
+
+size_t si_length;
+size_t st_length;
+size_t mh_length;
 
 float T1_trans(int id)
 {	
@@ -149,12 +157,12 @@ void Write_into_file(float room[],int len)
 
 void single_sensor(float temperature,int id)
 {
-	st.room_id = id;
+	st.roomid = id;
 	st.temperature = temperature;
 
 	size_t st_length = sensor_t__get_packed_size(&st);
 	buf_st = malloc(st_length);
-	sensor_t__pack(&si,buf_st);
+	sensor_t__pack(&st,buf_st);
 }
 
 void sensordata_pack(float T, float H, float Co2)
@@ -162,11 +170,11 @@ void sensordata_pack(float T, float H, float Co2)
 	si.roomid = 1;
 	si.temperature = T;
 	si.humidity = H;
-	si.Co2 = Co2;
-	si.haslight = 1;
+	si.co2 = Co2;
+	si.has_light = 1;
 	si.light = avge;
 
-	size_t si_length = sensor_info__get_packed_size(&si);
+	si_length = sensor_info__get_packed_size(&si);
 	buf_si = malloc(si_length);
 	sensor_info__pack(&si,buf_si);
 
@@ -178,7 +186,7 @@ void split_array(int len)
 	T_average =(room_info[2]+room_info[3]+room_info[4]+room_info[5]+room_info[6])/4;
 	Co2_average =(room_info[8] + room_info[9])/2;
 	
-	sensordata_pack(T_average,room[7],Co2_average);
+	sensordata_pack(T_average,room_info[7],Co2_average);
 
 }
 
@@ -189,21 +197,21 @@ void cleanup_array(int len,int id)
 
 	Co2_average = (room_info[len-1] + room_info[len-2]) /2;
 	
-	si.room_id = id;
+	si.roomid = id;
 	si.temperature = room_info[0];
 	si.humidity = room_info[1];
-	si.Co2 = Co2_average;
-	si.haslight = 1;
+	si.co2 = Co2_average;
+	si.has_light = 1;
 	si.light = 0;
 	
-	size_t si_length = sensor_info__get_packed_size(&si);
+	si_length = sensor_info__get_packed_size(&si);
 	buf_si = malloc(si_length);
 	sensor_info__pack(&si,buf_si);
 
 
 }
 
-void makeupdata(int id,int len)
+void makeup_data(int id,int len)
 {
 	
 	switch(id)
@@ -237,16 +245,16 @@ void init_msgheader(int id)
 		case 2:
 			mh.room_tag = 2;
 			break;
-	}
+	 }
 
-	size_t mh_length = message_header__get_packed_size(&mh);
+    mh_length = message_header__get_packed_size(&mh);
 	buf_mh = malloc(mh_length);
-	messageheader_pack(&mh,buf_mh);
+	message_header__pack(&mh,buf_mh);
 }
 
 
 
-void send_data(int id)
+void Send_data(int id)
 {
 	int len,ret;
 	
@@ -259,16 +267,16 @@ void send_data(int id)
 	{
 		snprintf(buf,sizeof(buf),"%s%d%s%s\n","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
 		free(buf_st);
-	} 
+	}  
 
 	free(buf_mh);
 	
-	ret = send(fd,buf,strlen(buf));
+	ret = send(fd,buf,strlen(buf),0);
 	if(ret < 0)
 	{
 		fprintf(stderr,"Error: send buf error\n");
 		exit(1);
-	}
+	} 
 
 }
 
@@ -318,14 +326,14 @@ void Get_data(void)
 	Calc_data(Sensor_TrainRoom2,len);
 	Write_into_file(room_info,len);
 	makeup_data(2,len);
-	send_data(1); //room 2 data
+	Send_data(1); //room 2 data
 
 	fputs("Room3:\n",fp);
 	len = sizeof(Sensor_TrainRoom3)/sizeof(Sensor_TrainRoom3[0]);
 	Calc_data(Sensor_TrainRoom3,len);
 	Write_into_file(room_info,len);
 	makeup_data(3,len);
-	send_data(1); //room 3 data
+	Send_data(1); //room 3 data
  
 	fputs("\n",fp);
 	fclose(fp);
@@ -383,7 +391,7 @@ int main(int argc, const char *argv[])
 	sensor_info__init(&si);
 	sensor_t__init(&st);
 	
-	ret = Connect_retry(fd,(struct sockaddr *)&clientaddr,sizeof(clientaddr));
+	ret = connect_retry(fd,(struct sockaddr *)&clientaddr,sizeof(clientaddr));
 
 	if(ret == -1)
 	{
