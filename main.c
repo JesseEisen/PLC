@@ -160,7 +160,7 @@ void single_sensor(float temperature,int id)
 	st.roomid = id;
 	st.temperature = temperature;
 
-	size_t st_length = sensor_t__get_packed_size(&st);
+	st_length = sensor_t__get_packed_size(&st);
 	buf_st = malloc(st_length);
 	sensor_t__pack(&st,buf_st);
 }
@@ -215,7 +215,7 @@ void makeup_data(int id,int len)
 {
 	
 	switch(id)
-	{
+	{ 
 		case 1:
 			split_array(len); //use to split array and use different proto to send
 			break;
@@ -231,25 +231,18 @@ void init_msgheader(int id)
 	mh.message_id = 1;
 	mh.has_message_type = 1;
 	mh.message_type = MESSAGE_HEADER__TYPE__TEXT;
-	mh.has_session = 1;
-	mh.session = 2;
 	mh.has_version = 1;
 	mh.version = 1;
+	mh.has_session = 1;
+	mh.session = 2;
 	mh.has_room_tag = 1;
-	
-	switch(id)
-	{
-		case 1:
-			mh.room_tag = 1;
-			break;
-		case 2:
-			mh.room_tag = 2;
-			break;
-	 }
+	mh.room_tag = id;
 
     mh_length = message_header__get_packed_size(&mh);
 	buf_mh = malloc(mh_length);
+	printf("%d\n",mh_length);
 	message_header__pack(&mh,buf_mh);
+	printf("%s,%d\n",(char *)buf_mh,strlen(buf_mh));
 }
 
 
@@ -260,23 +253,25 @@ void Send_data(int id)
 	
 	init_msgheader(id);
 	if(id == 1) //1 mean the sensor is full
-	{
-		snprintf(buf,sizeof(buf),"%s%d%s%s\n","MUSHROOM",si_length,(char *)buf_mh,(char *)buf_si);
+	{  
+		snprintf(buf,sizeof(buf),"%s %d %s %s\n","MUSHROOM",si_length,(char *)buf_mh,(char *)buf_si);
+		printf("si_length: %d\n",si_length);
 		free(buf_si);
 	}else if(id == 2) //mean the sensor is single
-	{
-		snprintf(buf,sizeof(buf),"%s%d%s%s\n","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
+	{ 
+		snprintf(buf,sizeof(buf),"%s %d %s %s\n","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
+		printf("single:%d\n",st_length);
 		free(buf_st);
-	}  
+	 }    
 
 	free(buf_mh);
-	
+
 	ret = send(fd,buf,strlen(buf),0);
 	if(ret < 0)
-	{
+	 {  
 		fprintf(stderr,"Error: send buf error\n");
 		exit(1);
-	} 
+	}   
 
 }
 
@@ -293,7 +288,7 @@ void Get_data(void)
 	{
 		fprintf(stderr,"Open file error\n");
 		exit(1);
- 	}
+ 	} 
 	
 	fputs(ctime(&the_time),fp);
 
@@ -313,13 +308,17 @@ void Get_data(void)
 	Write_into_file(room_info,len);
 	makeup_data(1,len);	
 	
+
+	
 	//send the first two single sensor room
 	single_sensor(room_info[0],4); //room_id is 4
 	Send_data(2);
 	single_sensor(room_info[1],5); //room_id is 5
 	Send_data(2);
+	sleep(1);
 
 	Send_data(1); //here used to send room1 data
+
 
 	fputs("Room2:\n",fp);
 	len = sizeof(Sensor_TrainRoom2)/sizeof(Sensor_TrainRoom2[0]);
@@ -334,10 +333,10 @@ void Get_data(void)
 	Write_into_file(room_info,len);
 	makeup_data(3,len);
 	Send_data(1); //room 3 data
- 
+
 	fputs("\n",fp);
 	fclose(fp);
-	
+		
 }
 
 
@@ -347,7 +346,7 @@ void *Sensor_data(void *arg)
 	{
 		Get_data();
 		sleep(5); //sleep 5 mins
-	 }
+	 } 
 }
 
 
@@ -366,7 +365,7 @@ int connect_retry(int sockfd, const struct sockaddr *addr,socklen_t alen)
 	int nesc;
 
 	for(nesc = 1; nesc <= MAXSLEEP; nesc <<= 1)
-	{
+	{ 
 		if(connect(sockfd, addr,alen) == 0)
 			return(0);
 		if(nesc <= MAXSLEEP/2)
@@ -399,7 +398,6 @@ int main(int argc, const char *argv[])
 	 	exit(1);
 	}
 
-	sleep(1);
 	err = pthread_create(&show_data,NULL,Sensor_data,NULL);
 	if(err != 0)
 	{

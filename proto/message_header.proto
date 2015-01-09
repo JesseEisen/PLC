@@ -11,6 +11,6 @@ message MessageHeader
 		TEXT =3;
 	}
 
-	optional int32 Version=4;
 	optional int32 Room_tag = 5;
+	optional int32 Version=4;
 }
