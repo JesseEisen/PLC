@@ -8,18 +8,45 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <strings.h>
-#include "message_header.pb-c.h"
+#include "header.pb-c.h"
+#include <errno.h>
 
 #define BUFSIZE 4096
 #define SA  struct sockaddr 
+
+ssize_t saferead(int fd, char *buf,size_t len)
+{
+	size_t nread;
+	size_t nleft;
+	char *ptr;
+
+	ptr = buf;
+	nleft = len;
+	while(nleft > 0)
+	{
+		if(nread = read(fd,ptr,nleft) < 0)
+		{
+			if(errno == EINTR)
+			  	nread = 0;
+			else
+				return(-1);
+		}else if(nread == 0)
+		{
+			break;
+		}
+		nleft -= nread;
+		ptr += nread;
+	}
+	return (len - nleft);
+}
 
 int main(int argc, const char *argv[])
 {
 	int fd,clifd;
 	struct sockaddr_in sockaddr;
 	char buf[BUFSIZE];
-	int len;
-	char header[BUFSIZE];
+	int len,ilen;
+	char header[100];
 	char flag[100];
 	char rinfo[100];
 
@@ -34,24 +61,26 @@ int main(int argc, const char *argv[])
 
 	listen(fd,10);
 
-	MessageHeader *mh;
+	Header *mh;
 	
 	clifd = accept(fd,NULL,NULL);
 	while(1)
 	{
-		recv(clifd,buf,sizeof(buf),0);
-	
-		sscanf(buf,"%s %d %s %s",flag, &len,header,rinfo);
-		printf("%s %d\n",flag,len);
-		mh = message_header__unpack(NULL,strlen(header),header);
+		saferead(clifd,buf,sizeof(buf));
+		printf("%s\n",buf);
+		sscanf(buf,"%s %s",flag,header);
+		//printf("%s %d\n",flag,len);
+		printf("Header: %d\n", strlen(header));
+		//printf("info size:%d\n",strlen(rinfo));
+		mh = header__unpack(NULL,4,header);
 		if(mh == NULL)
-		{
+		{ 
 			printf("unpack error\n");
 			exit(1);
-		}
+	 	 }  
 	
-		printf("%d %d %d\n",mh->message_id,mh->room_tag,mh->room_tag);
-	 }
+		printf("%d %d \n",mh->message_id,mh->message_flag);
+	 }  
 
 	message_header__free_unpacked(mh,NULL);
 	return 0;

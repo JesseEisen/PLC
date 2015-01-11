@@ -5,11 +5,12 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include "common.h"
-#include "message_header.pb-c.h"
+#include "header.pb-c.h"
 #include "getdata.pb-c.h"
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <errno.h>
 
 #define BUFSIZE  1024
 #define MAXSLEEP 128
@@ -33,19 +34,24 @@ int Sensor_light_Room1[] = {19,20,21,22};
 
 float room_info[10]; //save the room info
 
-MessageHeader mh;
-SensorInfo   si;
-SensorT		st;
+struct MsgSend
+{
+	Header mh;
+	SensorInfo   si;
+	SensorT	     st;
+};
 
-void *buf_si;
-void *buf_mh;
-void *buf_st;
+struct MsgSend MS;
 
-char buf[BUFSIZE];
+void *buf_si = NULL;
+void *buf_mh = NULL;
+void *buf_st = NULL;
 
-size_t si_length;
-size_t st_length;
-size_t mh_length;
+//char buf[BUFSIZE];
+
+int  si_length;
+int  st_length;
+int  mh_length;
 
 float T1_trans(int id)
 {	
@@ -78,7 +84,6 @@ float Co2_trans(int id)
 	sensor_get(ss, id,&data);
 	ret = (float)data * 10;
 
-	return ret;
 }
 
 float L_trans(int id)
@@ -138,12 +143,10 @@ void Calc_data(int room[],int len)
 				data = T2_trans(room[i]);
 				break;
 		} 
-
 		room_info[i] = data;
 	}
 }
-
-void Write_into_file(float room[],int len)
+void Write_into_file(float room[], int len)
 {
 	int i;
 
@@ -157,33 +160,45 @@ void Write_into_file(float room[],int len)
 
 void single_sensor(float temperature,int id)
 {
-	st.roomid = id;
-	st.temperature = temperature;
+	MS.st.roomid = 4;
+	//MS.st.temperature = temperature;
+	MS.st.temperature = 14;
 
-	st_length = sensor_t__get_packed_size(&st);
+	st_length = sensor_t__get_packed_size(&MS.st);
 	buf_st = malloc(st_length);
-	sensor_t__pack(&st,buf_st);
+	sensor_t__pack(&MS.st,buf_st);
 }
 
 void sensordata_pack(float T, float H, float Co2)
 {
-	si.roomid = 1;
-	si.temperature = T;
-	si.humidity = H;
-	si.co2 = Co2;
-	si.has_light = 1;
-	si.light = avge;
+	SensorInfo *Seni;
+	MS.si.roomid = 1;
+	//MS.si.temperature = T;
+	MS.si.temperature = 19.0;
+	//MS.si.humidity = H;
+	MS.si.humidity = 80.1;
+	//MS.si.co2 = Co2;
+	MS.si.co2 = 4500.1;
+	MS.si.has_light = 1;
+	//MS.si.light = avge;
+	MS.si.light = 1000.1;
 
-	si_length = sensor_info__get_packed_size(&si);
+	si_length = sensor_info__get_packed_size(&MS.si);
 	buf_si = malloc(si_length);
-	sensor_info__pack(&si,buf_si);
-
+	sensor_info__pack(&MS.si,buf_si);
+	//printf("sensor_info:%s\n",(char *)buf_si);
+	
+	//Seni = sensor_info__unpack(NULL,si_length,buf_si);
+	//if(Seni == NULL)
+	//	exit(0);
+	//printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
+	//sensor_info__free_unpacked(Seni,NULL);
 }
 
 void split_array(int len)
 {
 	float T_average,Co2_average;
-	T_average =(room_info[2]+room_info[3]+room_info[4]+room_info[5]+room_info[6])/4;
+	T_average =(room_info[2]+room_info[3]+room_info[4]+room_info[5]+room_info[6])/5;
 	Co2_average =(room_info[8] + room_info[9])/2;
 	
 	sensordata_pack(T_average,room_info[7],Co2_average);
@@ -197,16 +212,19 @@ void cleanup_array(int len,int id)
 
 	Co2_average = (room_info[len-1] + room_info[len-2]) /2;
 	
-	si.roomid = id;
-	si.temperature = room_info[0];
-	si.humidity = room_info[1];
-	si.co2 = Co2_average;
-	si.has_light = 1;
-	si.light = 0;
+	MS.si.roomid = id;
+	//MS.si.temperature = room_info[0];
+	MS.si.temperature = 100.0;
+	//MS.si.humidity = room_info[1];
+	MS.si.humidity = 100.0;
+	//MS.si.co2 = Co2_average;
+	MS.si.co2 = 3000.1;
+	MS.si.has_light = 1;
+	MS.si.light = 0;
 	
-	si_length = sensor_info__get_packed_size(&si);
+	si_length = sensor_info__get_packed_size(&MS.si);
 	buf_si = malloc(si_length);
-	sensor_info__pack(&si,buf_si);
+	sensor_info__pack(&MS.si,buf_si);
 
 
 }
@@ -228,51 +246,135 @@ void makeup_data(int id,int len)
 
 void init_msgheader(int id)
 {
-	mh.message_id = 1;
-	mh.has_message_type = 1;
-	mh.message_type = MESSAGE_HEADER__TYPE__TEXT;
-	mh.has_version = 1;
-	mh.version = 1;
-	mh.has_session = 1;
-	mh.session = 2;
-	mh.has_room_tag = 1;
-	mh.room_tag = id;
-
-    mh_length = message_header__get_packed_size(&mh);
+	
+	MS.mh.message_id = 1;
+	MS.mh.message_flag = id;
+ 
+    mh_length = header__get_packed_size(&MS.mh);
 	buf_mh = malloc(mh_length);
-	printf("%d\n",mh_length);
-	message_header__pack(&mh,buf_mh);
-	printf("%s,%d\n",(char *)buf_mh,strlen(buf_mh));
+	//printf("%d\n",id);
+	header__pack(&MS.mh,buf_mh);
+	//printf("%s,%d\n",(char *)buf_mh,strlen(buf_mh));
+	//Header *hd;
+	//hd = header__unpack(NULL,sizeof(buf_mh),buf_mh);
+	//printf("id:%d flag:%d\n",hd->message_id,hd->message_flag);
 }
 
+
+int safewrite(int fd, char *buf,size_t n)
+{
+	size_t nleft;
+	size_t nwritten;;
+	char *ptr;
+
+	ptr = buf;
+	nleft = n;
+	while(nleft > 0)
+	{
+		if((nwritten = write(fd, ptr,nleft)) <= 0)
+		{
+			if(nwritten < 0 && errno == EINTR)
+				nwritten = 0;
+			else
+				return(-1);
+		}
+		nleft -= nwritten;
+		ptr += nwritten;
+	}
+	return (n);
+	
+}
+
+void unpackmsg(char *buf)
+{
+	char header[100];
+	char info[100];
+	char flags[100];
+	int  hlen,ilen;
+	Header *hd;
+	SensorInfo *Seni;
+
+	printf("buf:%s\n",buf);
+	sscanf(buf,"%s %d %4s %d %22s",flags,&hlen,header,&ilen,info);
+	if(strcmp(flags,"MUSHROOM")== 0 )
+		printf("flag correct\n");
+	printf("info len: %d\n",hlen);
+	printf("%s\n",header);
+	printf("info:%s\n",info);
+	printf("header size:%d %d\n",sizeof(buf_mh),mh_length);
+	hd = header__unpack(NULL,mh_length,buf_mh);
+	if(hd == NULL)
+	{ 
+		printf("error header\n");
+		exit(0);
+	} 
+	printf("header: %d %d\n",hd->message_id,hd->message_flag);
+	header__free_unpacked(hd,NULL);
+	//if(hd->message_flag == 1)
+	//{ 
+	//	buf += strlen(flags)+sizeof(hlen)+strlen(header);
+	//	printf("new buf:%s\n",buf);
+	//	printf("info len: %d %d\n",strlen(info), si_length);
+	//	Seni = sensor_info__unpack(NULL,si_length,buf);
+	//	if(Seni == NULL)
+	//		exit(0);
+	//	printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
+	//	sensor_info__free_unpacked(Seni,NULL);
+	//} 
+	//printf("=================\n");
+}
 
 
 void Send_data(int id)
 {
 	int len,ret;
 	
+	char *buf;
+	
 	init_msgheader(id);
+	//char *flag = "MUSHROOM";
+
 	if(id == 1) //1 mean the sensor is full
-	{  
-		snprintf(buf,sizeof(buf),"%s %d %s %s\n","MUSHROOM",si_length,(char *)buf_mh,(char *)buf_si);
+	 {   
+		len = 9+sizeof(si_length)+sizeof(buf_mh)+si_length;
+		buf = (char *)malloc(len);	
+		//memset(buf,0,len);
+		snprintf(buf,len,"%s%d%s%s","MUSHROOM",si_length,(char *)buf_mh,(char *)buf_si);
 		printf("si_length: %d\n",si_length);
 		free(buf_si);
-	}else if(id == 2) //mean the sensor is single
-	{ 
-		snprintf(buf,sizeof(buf),"%s %d %s %s\n","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
+	}else if (id == 2 ) // mean the sensor is single
+	{         
+		len = 9+sizeof(st_length)+sizeof(buf_mh)+st_length;
+		buf = (char *)malloc(len);	
+		//memset(buf,0,len);
+		sprintf(buf,"%s%d%s%s","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
 		printf("single:%d\n",st_length);
 		free(buf_st);
-	 }    
+	 }else  
+	 {
+		len = 9+sizeof(buf_mh);
+		buf = (char *)malloc(len);	
+		memset(buf,0,len);
 
-	free(buf_mh);
+		snprintf(buf,len,"%s%s","MUSHROOM",(char *)buf_mh);
+	   }  		  
 
-	ret = send(fd,buf,strlen(buf),0);
+	//len = sizeof(buf);
+	printf("buf Len:%d\n",len);
+	//buf[len+1] = '\0';
+	//unpackmsg(buf);
+	printf("buf: %s\n",buf);
+	ret = safewrite(fd,buf,len);
+	//ret = send(fd,buf,sizeof(buf),0);
+	//ret = send(fd,buf_mh,sizeof(buf_mh),0);
 	if(ret < 0)
-	 {  
+	 {   
 		fprintf(stderr,"Error: send buf error\n");
 		exit(1);
-	}   
+	}      
 
+	free(buf);
+	free(buf_mh);
 }
 
 
@@ -308,32 +410,31 @@ void Get_data(void)
 	Write_into_file(room_info,len);
 	makeup_data(1,len);	
 	
-
-	
 	//send the first two single sensor room
-	single_sensor(room_info[0],4); //room_id is 4
-	Send_data(2);
-	single_sensor(room_info[1],5); //room_id is 5
-	Send_data(2);
-	sleep(1);
+	//single_sensor(room_info[0],4); //room_id is 4
+	//Send_data(2);
+	//sleep(3);
+	//single_sensor(room_info[1],5); //room_id is 5
+	//Send_data(2);
+	//sleep(2);
 
 	Send_data(1); //here used to send room1 data
-
+	sleep(3);
 
 	fputs("Room2:\n",fp);
 	len = sizeof(Sensor_TrainRoom2)/sizeof(Sensor_TrainRoom2[0]);
 	Calc_data(Sensor_TrainRoom2,len);
 	Write_into_file(room_info,len);
-	makeup_data(2,len);
-	Send_data(1); //room 2 data
-
+	//makeup_data(2,len);
+	//Send_data(1); //room 2 data
+	//sleep(3);
 	fputs("Room3:\n",fp);
 	len = sizeof(Sensor_TrainRoom3)/sizeof(Sensor_TrainRoom3[0]);
 	Calc_data(Sensor_TrainRoom3,len);
 	Write_into_file(room_info,len);
-	makeup_data(3,len);
-	Send_data(1); //room 3 data
-
+	//makeup_data(3,len);
+	//Send_data(1); //room 3 data
+	//sleep(3);
 	fputs("\n",fp);
 	fclose(fp);
 		
@@ -350,15 +451,15 @@ void *Sensor_data(void *arg)
 }
 
 
-void *Control_controller(void *arg)
-{
+//void *Control_controller(void *arg)
+//{
 //	while(1)
 //	{
 //		printf("waiting for control\n");
 //		sleep(3);
 //	}
 
-}
+//}
 
 int connect_retry(int sockfd, const struct sockaddr *addr,socklen_t alen)
 {
@@ -386,9 +487,6 @@ int main(int argc, const char *argv[])
 	ss = fx_serial_start();
 	fd = client_init(7000,argv[1]);
 
-	message_header__init(&mh);
-	sensor_info__init(&si);
-	sensor_t__init(&st);
 	
 	ret = connect_retry(fd,(struct sockaddr *)&clientaddr,sizeof(clientaddr));
 
@@ -398,25 +496,33 @@ int main(int argc, const char *argv[])
 	 	exit(1);
 	}
 
-	err = pthread_create(&show_data,NULL,Sensor_data,NULL);
-	if(err != 0)
+	while(1)
 	{
-		fprintf(stderr,"cannot create the thread\n");
-		exit(1);
-	}
+		header__init(&MS.mh);
+		sensor_info__init(&MS.si);
+		sensor_t__init(&MS.st);
+		Get_data();
+		sleep(5); //sleep 5 mins
+	 } 
+	//err = pthread_create(&show_data,NULL,Sensor_data,NULL);
+	//if(err != 0)
+	//	{
+	//	fprintf(stderr,"cannot create the thread\n");
+	//	exit(1);
+	//}
 
-	err = pthread_create(&wait_controller,NULL,Control_controller,NULL);
-	if(err != 0)
-	{
-		fprintf(stderr,"cannot create the thread\n");
-		exit(1);
-	}
+	//err = pthread_create(&wait_controller,NULL,Control_controller,NULL);
+	//if(err != 0)
+	//{
+	//	fprintf(stderr,"cannot create the thread\n");
+	//	exit(1);
+	//}
 
-	pthread_join(show_data, NULL);
-	pthread_join(wait_controller, NULL);
+	//pthread_join(show_data, NULL);
+	//pthread_join(wait_controller, NULL);
 
 
-	while(1) getchar();
+	//while(1) getchar();
 	fx_serial_stop(ss);
 	return 0;
 }
