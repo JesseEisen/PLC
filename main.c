@@ -43,15 +43,32 @@ struct MsgSend
 
 struct MsgSend MS;
 
-void *buf_si = NULL;
-void *buf_mh = NULL;
-void *buf_st = NULL;
+//struct RMsg
+//{
+//	char *flag;
+//	int	 len;
+//	void *buf;
+//};
+//struct RMsg RM;
+
+//struct IMsg 
+//{
+//	char *flag;
+//	int len;
+//	void *buf;
+//}
+
+//struct IMsg IM;
+
 
 //char buf[BUFSIZE];
-
 int  si_length;
 int  st_length;
 int  mh_length;
+
+void *buf_mh;
+void *buf_st;
+void *buf_si;
 
 float T1_trans(int id)
 {	
@@ -163,10 +180,12 @@ void single_sensor(float temperature,int id)
 	MS.st.roomid = 4;
 	//MS.st.temperature = temperature;
 	MS.st.temperature = 14;
-
+	
 	st_length = sensor_t__get_packed_size(&MS.st);
 	buf_st = malloc(st_length);
 	sensor_t__pack(&MS.st,buf_st);
+	fwrite(buf_st,st_length,1,stdout);
+	putchar('\n');
 }
 
 void sensordata_pack(float T, float H, float Co2)
@@ -188,11 +207,14 @@ void sensordata_pack(float T, float H, float Co2)
 	sensor_info__pack(&MS.si,buf_si);
 	//printf("sensor_info:%s\n",(char *)buf_si);
 	
-	//Seni = sensor_info__unpack(NULL,si_length,buf_si);
-	//if(Seni == NULL)
-	//	exit(0);
-	//printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
-	//sensor_info__free_unpacked(Seni,NULL);
+	Seni = sensor_info__unpack(NULL,si_length,buf_si);
+	if(Seni == NULL)
+		exit(0);
+	printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
+	sensor_info__free_unpacked(Seni,NULL);
+	printf("%d\n",strlen(buf_si));
+	fwrite(buf_si,si_length,1,stdout);
+	putchar('\n');
 }
 
 void split_array(int len)
@@ -254,10 +276,11 @@ void init_msgheader(int id)
 	buf_mh = malloc(mh_length);
 	//printf("%d\n",id);
 	header__pack(&MS.mh,buf_mh);
-	//printf("%s,%d\n",(char *)buf_mh,strlen(buf_mh));
+	//printf("%d,%d\n",sizeof(buf_mh),strlen(buf_mh));
 	//Header *hd;
 	//hd = header__unpack(NULL,sizeof(buf_mh),buf_mh);
 	//printf("id:%d flag:%d\n",hd->message_id,hd->message_flag);
+	//fwrite(buf_mh,mh_length,1,stdout);
 }
 
 
@@ -280,7 +303,7 @@ int safewrite(int fd, char *buf,size_t n)
 		}
 		nleft -= nwritten;
 		ptr += nwritten;
-	}
+	} 
 	return (n);
 	
 }
@@ -295,14 +318,13 @@ void unpackmsg(char *buf)
 	SensorInfo *Seni;
 
 	printf("buf:%s\n",buf);
-	sscanf(buf,"%s %d %4s %d %22s",flags,&hlen,header,&ilen,info);
+	sscanf(buf,"%s%2d%s%s",flags,&hlen,header,info);
 	if(strcmp(flags,"MUSHROOM")== 0 )
 		printf("flag correct\n");
-	printf("info len: %d\n",hlen);
-	printf("%s\n",header);
+	printf("info len: %d %d\n",hlen,strlen(info));
 	printf("info:%s\n",info);
 	printf("header size:%d %d\n",sizeof(buf_mh),mh_length);
-	hd = header__unpack(NULL,mh_length,buf_mh);
+	hd = header__unpack(NULL,strlen(buf_mh),buf_mh);
 	if(hd == NULL)
 	{ 
 		printf("error header\n");
@@ -310,73 +332,110 @@ void unpackmsg(char *buf)
 	} 
 	printf("header: %d %d\n",hd->message_id,hd->message_flag);
 	header__free_unpacked(hd,NULL);
-	//if(hd->message_flag == 1)
-	//{ 
-	//	buf += strlen(flags)+sizeof(hlen)+strlen(header);
-	//	printf("new buf:%s\n",buf);
-	//	printf("info len: %d %d\n",strlen(info), si_length);
-	//	Seni = sensor_info__unpack(NULL,si_length,buf);
-	//	if(Seni == NULL)
-	//		exit(0);
-	//	printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
-	//	sensor_info__free_unpacked(Seni,NULL);
-	//} 
-	//printf("=================\n");
+	if(hd->message_flag == 1)
+	{ 
+		printf("info len: %d %d\n",strlen(info), si_length);
+		Seni = sensor_info__unpack(NULL,si_length,buf_si);
+		if(Seni == NULL)
+			exit(0);
+		printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
+		sensor_info__free_unpacked(Seni,NULL);
+	} 
+	printf("=================\n");
 }
-
 
 void Send_data(int id)
 {
-	int len,ret;
-	
-	char *buf;
-	
+	int len, ret;
+	void *buf,*index;
+
 	init_msgheader(id);
-	//char *flag = "MUSHROOM";
-
-	if(id == 1) //1 mean the sensor is full
-	 {   
-		len = 9+sizeof(si_length)+sizeof(buf_mh)+si_length;
-		buf = (char *)malloc(len);	
-		//memset(buf,0,len);
-		snprintf(buf,len,"%s%d%s%s","MUSHROOM",si_length,(char *)buf_mh,(char *)buf_si);
-		printf("si_length: %d\n",si_length);
+	if(id == 1)
+	{
+		len = 8+2+mh_length+si_length;
+		buf = malloc(len);
+		index = buf;
+		sprintf(buf,"%s%d","MUSHROOM",si_length);
+		index += strlen(buf); //move to the end
+		memmove((void *)index,buf_mh,mh_length);
+		index += mh_length;
+		memmove((void *)index,buf_si,si_length);
 		free(buf_si);
-	}else if (id == 2 ) // mean the sensor is single
-	{         
-		len = 9+sizeof(st_length)+sizeof(buf_mh)+st_length;
-		buf = (char *)malloc(len);	
-		//memset(buf,0,len);
-		sprintf(buf,"%s%d%s%s","MUSHROOM",st_length,(char *)buf_mh,(char *)buf_st);
-		printf("single:%d\n",st_length);
+	}else if(id == 2)
+	{
+		len = 8+2 + mh_length +st_length;
+		buf = malloc(len+10);
+		sprintf(buf,"%s%d","MUSHROOM",st_length);
+		index = buf;
+		index += strlen(buf); //move to the end
+		memmove((void *)index,buf_mh,mh_length);
+		//strcat(buf,buf_st);
+		index += mh_length;
+		memmove((void *)index,buf_st,st_length);
+		printf("buf length:%d %d\n",strlen(buf),st_length);
 		free(buf_st);
-	 }else  
-	 {
-		len = 9+sizeof(buf_mh);
-		buf = (char *)malloc(len);	
-		memset(buf,0,len);
-
-		snprintf(buf,len,"%s%s","MUSHROOM",(char *)buf_mh);
-	   }  		  
-
-	//len = sizeof(buf);
-	printf("buf Len:%d\n",len);
-	//buf[len+1] = '\0';
-	//unpackmsg(buf);
-	printf("buf: %s\n",buf);
+	}    
+	
+	fwrite(buf,strlen(buf),1,stdout);
+	putchar('\n');
+	printf("%d %d\n",strlen(buf),len);
 	ret = safewrite(fd,buf,len);
-	//ret = send(fd,buf,sizeof(buf),0);
-	//ret = send(fd,buf_mh,sizeof(buf_mh),0);
 	if(ret < 0)
-	 {   
-		fprintf(stderr,"Error: send buf error\n");
+	{
+		fprintf(stderr,"Err: send msg error\n");
 		exit(1);
-	}      
+	} 
 
 	free(buf);
 	free(buf_mh);
+
 }
 
+
+//void Send_data2(int id)
+//{
+//	int len,ret;
+//	RM.flag	= malloc(9);
+	//strcpy(RM.flag,"MUSHROOM");
+	//init_msgheader(id);
+	////char *flag = "MUSHROOM";
+	//RM.buf1 = malloc(mh_length);
+	//RM.buf1 = buf_mh; 
+	//if(id == 1) //1 mean the sensor is full
+	// {
+	//	 RM.len = si_length;
+	//	 RM.buf2 = malloc(si_length);
+	//	 RM.buf2 = buf_si;
+	//	 fwrite(RM.buf2,si_length,1,stdout);
+	//	 putchar('\n');
+	//	 free(buf_si);	 
+	//}else if (id == 2 ) // mean the sensor is single
+	//{          
+	//	RM.len = st_length;
+	//	RM.buf2 = malloc(st_length);
+	//	strcpy(RM.buf2,buf_si);
+	//	free(buf_st);
+	// }  
+	////len = sizeof(buf);
+	////printf("buf Len:%d\n",strlen(buf));
+	////buf[len+1] = '\0';
+	////unpackmsg(buf);
+	////free(buf_si);
+	////printf("buf: %s\n",buf);
+	////ret = safewrite(fd,buf,len);
+	//ret = send(fd,&RM,sizeof(RM),0);
+	////ret = send(fd,buf_mh,sizeof(buf_mh),0);
+	//if(ret < 0)
+	// {   
+	//	fprintf(stderr,"Error: send buf error\n");
+	//	exit(1);
+	//}      
+    //
+	//free(RM.buf1);
+	//free(RM.buf2);
+	//free(buf_mh);
+//}   
+    //
 
 void Get_data(void)
 {
@@ -411,9 +470,9 @@ void Get_data(void)
 	makeup_data(1,len);	
 	
 	//send the first two single sensor room
-	//single_sensor(room_info[0],4); //room_id is 4
-	//Send_data(2);
-	//sleep(3);
+	single_sensor(room_info[0],4); //room_id is 4
+	Send_data(2);
+	sleep(3);
 	//single_sensor(room_info[1],5); //room_id is 5
 	//Send_data(2);
 	//sleep(2);

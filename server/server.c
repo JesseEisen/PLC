@@ -40,16 +40,23 @@ ssize_t saferead(int fd, char *buf,size_t len)
 	return (len - nleft);
 }
 
+struct RMsg
+{
+	char *flag;
+	int  len;
+	char *buf1;
+	char *buf2;
+};
+
 int main(int argc, const char *argv[])
 {
-	int fd,clifd;
+	int fd,clifd,i;
 	struct sockaddr_in sockaddr;
 	char buf[BUFSIZE];
-	int len,ilen;
-	char header[100];
-	char flag[100];
-	char rinfo[100];
-
+	//struct RMsg Rm;
+	//Rm.flag = malloc(9);
+	//Rm.buf1 = malloc(100);
+	//Rm.buf2 = malloc(100);
 
 	fd = socket(AF_INET,SOCK_STREAM,0);
 	bzero(&sockaddr,sizeof(sockaddr));
@@ -66,23 +73,30 @@ int main(int argc, const char *argv[])
 	clifd = accept(fd,NULL,NULL);
 	while(1)
 	{
+		printf("1\n");
+		memset(buf,0,sizeof(buf));
 		saferead(clifd,buf,sizeof(buf));
-		printf("%s\n",buf);
-		sscanf(buf,"%s %s",flag,header);
+		//read(clifd,&Rm,sizeof(Rm));
 		//printf("%s %d\n",flag,len);
-		printf("Header: %d\n", strlen(header));
+		//printf("Header: %d\n", strlen(header));
 		//printf("info size:%d\n",strlen(rinfo));
-		mh = header__unpack(NULL,4,header);
-		if(mh == NULL)
-		{ 
-			printf("unpack error\n");
-			exit(1);
-	 	 }  
+		//printf("info: %s\n",rinfo);
+		//mh = header__unpack(NULL,4,Rm.buf1);
+		//if(mh == NULL)
+		//{ 
+		//	printf("unpack error\n");
+		//	exit(1);
+ 	 	 //}  
 	
-		printf("%d %d \n",mh->message_id,mh->message_flag);
-	 }  
+		//printf("%d %d \n",mh->message_id,mh->message_flag);
+		for(i = 0; i < 21;i++)
+		{
+			printf("%c",buf[i]);
+		}
+		printf("\n");
+   	}  
 
-	message_header__free_unpacked(mh,NULL);
+	//message_header__free_unpacked(mh,NULL);
 	return 0;
 }
 
