@@ -184,8 +184,8 @@ void single_sensor(float temperature,int id)
 	st_length = sensor_t__get_packed_size(&MS.st);
 	buf_st = malloc(st_length);
 	sensor_t__pack(&MS.st,buf_st);
-	fwrite(buf_st,st_length,1,stdout);
-	putchar('\n');
+	//fwrite(buf_st,st_length,1,stdout);
+	//putchar('\n');
 }
 
 void sensordata_pack(float T, float H, float Co2)
@@ -207,14 +207,14 @@ void sensordata_pack(float T, float H, float Co2)
 	sensor_info__pack(&MS.si,buf_si);
 	//printf("sensor_info:%s\n",(char *)buf_si);
 	
-	Seni = sensor_info__unpack(NULL,si_length,buf_si);
-	if(Seni == NULL)
-		exit(0);
-	printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
-	sensor_info__free_unpacked(Seni,NULL);
-	printf("%d\n",strlen(buf_si));
-	fwrite(buf_si,si_length,1,stdout);
-	putchar('\n');
+	//Seni = sensor_info__unpack(NULL,si_length,buf_si);
+	//if(Seni == NULL)
+	//	exit(0);
+	//printf("room:%f %f %f \n",Seni->co2,Seni->temperature,Seni->light);
+	//sensor_info__free_unpacked(Seni,NULL);
+	//printf("%d\n",strlen(buf_si));
+	//fwrite(buf_si,si_length,1,stdout);
+	//putchar('\n');
 }
 
 void split_array(int len)
@@ -372,13 +372,13 @@ void Send_data(int id)
 		//strcat(buf,buf_st);
 		index += mh_length;
 		memmove((void *)index,buf_st,st_length);
-		printf("buf length:%d %d\n",strlen(buf),st_length);
+		//printf("buf length:%d %d\n",strlen(buf),st_length);
 		free(buf_st);
 	}    
 	
-	fwrite(buf,strlen(buf),1,stdout);
-	putchar('\n');
-	printf("%d %d\n",strlen(buf),len);
+	//fwrite(buf,strlen(buf),1,stdout);
+	//putchar('\n');
+	//printf("%d %d\n",strlen(buf),len);
 	ret = safewrite(fd,buf,len);
 	if(ret < 0)
 	{
@@ -561,7 +561,7 @@ int main(int argc, const char *argv[])
 		sensor_info__init(&MS.si);
 		sensor_t__init(&MS.st);
 		Get_data();
-		sleep(5); //sleep 5 mins
+		sleep(293); //sleep 5 mins
 	 } 
 	//err = pthread_create(&show_data,NULL,Sensor_data,NULL);
 	//if(err != 0)
